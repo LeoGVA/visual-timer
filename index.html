@@ -282,6 +282,8 @@ function startTimer() {
     if ("Notification" in window && Notification.permission !== "granted") {
   Notification.requestPermission();
 }
+    const endTime = Date.now() + timeLeft * 1000;
+localStorage.setItem("timerEndTime", endTime);
     if (timerInterval || isFlashing) { if(isFlashing) stopAlarm(); return; }
     if (timeLeft <= 0) return;
 
@@ -408,5 +410,6 @@ if ("serviceWorker" in navigator) {
 </body>
 
 </html>
+
 
 
