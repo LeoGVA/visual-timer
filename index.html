@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<!-- iOS用の設定 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="V-Tools">
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3563/3563411.png">
+
+<title>Visual Tools</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@keyframes flash {
+0%, 100% { background-color: #f87171; }
+50% { background-color: #ffffff; }
+}
+.flashing {
+animation: flash 0.5s linear infinite !important;
+}
+.timer-display, .sw-display {
+font-variant-numeric: tabular-nums;
+-webkit-user-select: none;
+user-select: none;
+}
+.progress-ring__circle {
+transform: rotate(-90deg);
+transform-origin: 50% 50%;
+}
+button {
+-webkit-tap-highlight-color: transparent;
+transition: transform 0.1s active;
+}
+button:active {
+transform: scale(0.95);
+}
+/* iOSのセーフエリア対応 */
+body {
+padding-top: env(safe-area-inset-top);
+padding-bottom: env(safe-area-inset-bottom);
+}
+/* 入力欄のスタイル */
+#timer-input-wrapper {
+position: relative;
+display: inline-block;
+}
+#hidden-timer-input {
+position: absolute;
+opacity: 0;
+pointer-events: none;
+}
+.tab-active {
+color: #4f46e5;
+border-bottom: 2px solid #4f46e5;
+}
+.content-area {
+min-height: 540px;
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+}
+.lap-list {
+height: 140px;
+overflow-y: auto;
+-webkit-overflow-scrolling: touch;
+border-top: 1px solid #f8fafc;
+}
+</style>
+</head>
+<body class="bg-slate-50 flex flex-col items-center justify-center min-h-screen transition-colors duration-500" id="body-bg">
+
+<div class="w-full max-w-sm p-6 bg-white rounded-[3rem] shadow-2xl text-center mx-4 relative border border-slate-100">
+    <!-- タブ切り替え -->
+    <div class="flex justify-around border-b border-slate-100 mb-6">
+        <button id="tab-timer" class="pb-2 text-sm font-bold tab-active w-1/2 transition-all">タイマー</button>
+        <button id="tab-stopwatch" class="pb-2 text-sm font-bold text-slate-400 w-1/2 transition-all">ストップウォッチ</button>
+    </div>
+
+    <!-- コンテンツエリア -->
+    <div class="content-area">
+        
+        <!-- タイマーコンテンツ -->
+        <div id="timer-content" class="space-y-6">
+            <div class="relative flex items-center justify-center">
+                <svg class="w-64 h-64">
+                    <circle class="text-slate-100" stroke-width="10" stroke="currentColor" fill="transparent" r="120" cx="128" cy="128" />
+                    <circle id="progress-bar" class="text-indigo-600 progress-ring__circle" stroke-width="10" stroke-dasharray="753.98" stroke-dashoffset="753.98" stroke-linecap="round" stroke="currentColor" fill="transparent" r="120" cx="128" cy="128" />
+                </svg>
+                <div class="absolute">
+                    <div class="timer-display text-5xl font-bold text-slate-800" id="display">00:00</div>
+                </div>
+            </div>
+
+            <!-- クイック設定 -->
+            <div class="grid grid-cols-3 gap-2 px-2">
+                <button onclick="addTime(60)" class="bg-slate-100 py-2 rounded-xl text-slate-600 font-bold text-sm">+1分</button>
+                <button onclick="addTime(300)" class="bg-slate-100 py-2 rounded-xl text-slate-600 font-bold text-sm">+5分</button>
+                <button onclick="addTime(10)" class="bg-slate-100 py-2 rounded-xl text-slate-600 font-bold text-sm">+10秒</button>
+            </div>
+
+            <!-- 電卓入力フィールド -->
+            <div class="relative group cursor-pointer" onclick="focusInput()">
+                <div class="bg-slate-50 py-6 rounded-2xl mx-4 flex flex-col items-center justify-center transition-all group-active:bg-slate-100 border border-transparent active:border-slate-200">
+                    <input type="number" id="hidden-timer-input" pattern="\d*" inputmode="numeric">
+                    <div id="timer-input-display" class="text-4xl font-bold tracking-wider flex items-center justify-center space-x-2">
+                        <!-- JSで動的に生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-3 px-2">
+                <button id="start-btn" class="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-xl shadow-indigo-100 text-lg active:bg-indigo-700">START</button>
+                <div class="flex space-x-3">
+                    <button id="stop-btn" class="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl active:bg-slate-200">STOP</button>
+                    <button id="reset-btn" class="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl active:bg-slate-200">CLEAR</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ストップウォッチコンテンツ -->
+        <div id="stopwatch-content" class="hidden flex flex-col h-full space-y-6">
+            <div class="flex-1 flex flex-col justify-center py-4">
+                <div class="sw-display text-5xl font-bold text-slate-800 tracking-tighter" id="sw-display">00:00.00</div>
+            </div>
+            <div class="lap-list px-4 space-y-2 text-sm pt-2" id="lap-list">
+                <div class="text-slate-300 italic pt-4">ラップなし</div>
+            </div>
+            <div class="space-y-3 px-2">
+                <button id="sw-start-btn" class="w-full bg-emerald-500 text-white font-bold py-5 rounded-2xl shadow-xl shadow-emerald-100 text-lg active:bg-emerald-600">START</button>
+                <div class="flex space-x-3">
+                    <button id="sw-lap-btn" class="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl active:bg-slate-200">LAP</button>
+                    <button id="sw-reset-btn" class="flex-1 bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl active:bg-slate-200">RESET</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<button id="stop-flash-btn" class="hidden fixed bottom-16 bg-slate-900 text-white px-10 py-4 rounded-full font-bold shadow-2xl animate-bounce z-50">アラームを止める</button>
+
+<script>
+// --- 共通・タブ管理 ---
+const tabTimer = document.getElementById('tab-timer');
+const tabStopwatch = document.getElementById('tab-stopwatch');
+const timerContent = document.getElementById('timer-content');
+const stopwatchContent = document.getElementById('stopwatch-content');
+
+tabTimer.onclick = () => {
+    tabTimer.classList.add('tab-active');
+    tabStopwatch.classList.remove('tab-active');
+    tabStopwatch.classList.add('text-slate-400');
+    timerContent.classList.remove('hidden');
+    stopwatchContent.classList.add('hidden');
+};
+
+tabStopwatch.onclick = () => {
+    tabStopwatch.classList.add('tab-active');
+    tabTimer.classList.remove('tab-active');
+    tabTimer.classList.add('text-slate-400');
+    stopwatchContent.classList.remove('hidden');
+    timerContent.classList.add('hidden');
+};
+
+// --- タイマー機能 ---
+let timeLeft = 0, totalTime = 0, timerInterval = null, isFlashing = false;
+let inputDigits = ""; 
+
+const display = document.getElementById('display');
+const hiddenInput = document.getElementById('hidden-timer-input');
+const timerInputDisplay = document.getElementById('timer-input-display');
+const startBtn = document.getElementById('start-btn'), stopBtn = document.getElementById('stop-btn'), resetBtn = document.getElementById('reset-btn');
+const bodyBg = document.getElementById('body-bg'), stopFlashBtn = document.getElementById('stop-flash-btn'), progressBar = document.getElementById('progress-bar');
+const radius = 120, circumference = 2 * Math.PI * radius;
+
+function focusInput() {
+    if (timerInterval) {
+        stopTimer();
+    }
+    // タップ時に入力を空にして、入力をしやすくする
+    inputDigits = "";
+    hiddenInput.value = "";
+    updateInputDisplay();
+    hiddenInput.focus();
+}
+
+hiddenInput.addEventListener('input', (e) => {
+    const val = e.target.value.replace(/\D/g, '');
+    inputDigits = val.slice(-6); 
+    e.target.value = inputDigits;
+    updateInputDisplay();
+    syncFromInputString();
+});
+
+function updateInputDisplay() {
+    const padded = inputDigits.padStart(6, '0');
+    const hh = padded.substring(0, 2);
+    const mm = padded.substring(2, 4);
+    const ss = padded.substring(4, 6);
+    
+    timerInputDisplay.innerHTML = `
+        <span class="${hh === '00' ? 'text-slate-200' : 'text-slate-700'}">${hh}</span>
+        <span class="text-slate-200 text-2xl mx-1">:</span>
+        <span class="${hh === '00' && mm === '00' ? 'text-slate-200' : 'text-slate-700'}">${mm}</span>
+        <span class="text-slate-200 text-2xl mx-1">:</span>
+        <span class="${hh === '00' && mm === '00' && ss === '00' ? 'text-slate-200' : 'text-slate-700'}">${ss}</span>
+    `;
+}
+
+function syncFromInputString() {
+    const padded = inputDigits.padStart(6, '0');
+    const hh = parseInt(padded.substring(0, 2)) || 0;
+    const mm = parseInt(padded.substring(2, 4)) || 0;
+    const ss = parseInt(padded.substring(4, 6)) || 0;
+    
+    timeLeft = (hh * 3600) + (mm * 60) + ss;
+    totalTime = timeLeft;
+    updateTimerDisplay(timeLeft);
+    setProgress(timeLeft > 0 ? 100 : 0, false, 0);
+}
+
+function setProgress(percent, useAnimation = true, duration = 1) {
+    progressBar.style.transition = useAnimation ? `stroke-dashoffset ${duration}s linear` : 'none';
+    const offset = percent <= 0 ? circumference : circumference - (percent / 100 * circumference);
+    progressBar.style.strokeDashoffset = offset;
+}
+
+function updateTimerDisplay(seconds) {
+    const hh = Math.floor(seconds / 3600);
+    const mm = Math.floor((seconds % 3600) / 60);
+    const ss = seconds % 60;
+    
+    if (hh > 0) {
+        display.textContent = `${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`;
+        display.style.fontSize = "2.5rem";
+    } else {
+        display.textContent = `${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`;
+        display.style.fontSize = "3rem";
+    }
+}
+
+function addTime(amount) {
+    if (timerInterval) stopTimer();
+    timeLeft += amount;
+    timeLeft = Math.min(timeLeft, 359999); 
+    totalTime = timeLeft;
+    
+    const hh = Math.floor(timeLeft / 3600);
+    const mm = Math.floor((timeLeft % 3600) / 60);
+    const ss = timeLeft % 60;
+    inputDigits = (hh * 10000 + mm * 100 + ss).toString();
+    hiddenInput.value = inputDigits;
+    
+    updateInputDisplay();
+    updateTimerDisplay(timeLeft);
+    setProgress(100, false, 0);
+}
+
+function startTimer() {
+    if (timerInterval || isFlashing) { if(isFlashing) stopAlarm(); return; }
+    if (timeLeft <= 0) return;
+
+    const startPercent = (timeLeft / totalTime) * 100;
+    setProgress(startPercent, false, 0);
+    
+    startBtn.disabled = true; startBtn.innerText = "RUNNING..."; startBtn.classList.add('opacity-50');
+    
+    setTimeout(() => {
+        setProgress(0, true, timeLeft);
+        
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            updateTimerDisplay(timeLeft);
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                triggerAlarm();
+            }
+        }, 1000);
+    }, 50);
+}
+
+function stopTimer() {
+    clearInterval(timerInterval); timerInterval = null;
+    startBtn.disabled = false; startBtn.innerText = "START"; startBtn.classList.remove('opacity-50');
+    
+    const computedStyle = window.getComputedStyle(progressBar);
+    const currentOffset = computedStyle.getPropertyValue('stroke-dashoffset');
+    progressBar.style.transition = 'none';
+    progressBar.style.strokeDashoffset = currentOffset;
+}
+
+function resetTimer() { 
+    stopTimer(); 
+    stopAlarm(); 
+    timeLeft = 0; 
+    totalTime = 0; 
+    inputDigits = ""; 
+    hiddenInput.value = "";
+    updateInputDisplay(); 
+    updateTimerDisplay(0); 
+    setProgress(0, false, 0); 
+}
+
+function triggerAlarm() { 
+    isFlashing = true; 
+    bodyBg.classList.add('flashing'); 
+    stopFlashBtn.classList.remove('hidden'); 
+    stopTimer(); 
+    setProgress(0, false, 0); 
+    if (navigator.vibrate) navigator.vibrate([500, 300, 500]); 
+}
+
+function stopAlarm() { 
+    isFlashing = false; 
+    bodyBg.classList.remove('flashing'); 
+    stopFlashBtn.classList.add('hidden'); 
+}
+
+startBtn.onclick = startTimer; stopBtn.onclick = stopTimer; resetBtn.onclick = resetTimer; stopFlashBtn.onclick = stopAlarm;
+progressBar.style.strokeDasharray = `${circumference} ${circumference}`;
+
+// --- ストップウォッチ機能 ---
+let swStartTime = 0, swElapsedTime = 0, swInterval = null, laps = [];
+const swDisplay = document.getElementById('sw-display'), swStartBtn = document.getElementById('sw-start-btn');
+const swLapBtn = document.getElementById('sw-lap-btn'), swResetBtn = document.getElementById('sw-reset-btn'), lapList = document.getElementById('lap-list');
+
+function formatTime(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const centiseconds = Math.floor((ms % 1000) / 10);
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
+}
+
+swStartBtn.onclick = () => {
+    if (swInterval) {
+        clearInterval(swInterval);
+        swInterval = null;
+        swStartBtn.innerText = "START";
+        swStartBtn.classList.replace('bg-rose-500', 'bg-emerald-500');
+    } else {
+        swStartTime = Date.now() - swElapsedTime;
+        swInterval = setInterval(() => {
+            swElapsedTime = Date.now() - swStartTime;
+            swDisplay.textContent = formatTime(swElapsedTime);
+        }, 10);
+        swStartBtn.innerText = "STOP";
+        swStartBtn.classList.replace('bg-emerald-500', 'bg-rose-500');
+    }
+};
+
+swLapBtn.onclick = () => {
+    if (!swInterval && swElapsedTime === 0) return;
+    if (laps.length === 0) lapList.innerHTML = '';
+    const lapTime = swElapsedTime;
+    laps.unshift(lapTime);
+    const lapItem = document.createElement('div');
+    lapItem.className = 'flex justify-between border-b border-slate-50 py-1 text-slate-500';
+    lapItem.innerHTML = `<span>ラップ ${laps.length}</span><span class="font-mono font-bold text-slate-700">${formatTime(lapTime)}</span>`;
+    lapList.prepend(lapItem);
+};
+
+swResetBtn.onclick = () => {
+    clearInterval(swInterval); swInterval = null; swElapsedTime = 0; laps = [];
+    lapList.innerHTML = '<div class="text-slate-300 italic pt-4">ラップなし</div>';
+    swDisplay.textContent = formatTime(0);
+    swStartBtn.innerText = "START"; swStartBtn.classList.replace('bg-rose-500', 'bg-emerald-500');
+};
+
+// 初期表示
+updateTimerDisplay(0);
+updateInputDisplay();
+</script>
+</body>
+</html>
