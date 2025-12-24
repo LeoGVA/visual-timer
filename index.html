@@ -259,6 +259,9 @@ function addTime(amount) {
 }
 
 function startTimer() {
+    if ("Notification" in window && Notification.permission !== "granted") {
+  Notification.requestPermission();
+}
     if (timerInterval || isFlashing) { if(isFlashing) stopAlarm(); return; }
     if (timeLeft <= 0) return;
 
@@ -374,7 +377,11 @@ swResetBtn.onclick = () => {
 // 初期表示
 updateTimerDisplay(0);
 updateInputDisplay();
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./service-worker.js");
+}
 </script>
 </body>
 
 </html>
+
